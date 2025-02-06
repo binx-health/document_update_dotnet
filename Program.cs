@@ -1,17 +1,18 @@
-﻿using System.Diagnostics;
-using System.ServiceModel;
+﻿using System.ServiceModel;
 using System.Text;
-using System.Threading.Tasks;
 using System.Xml.Linq;
-using Microsoft.VisualBasic;
 using ServiceReference;
 using static ServiceReference.wsDocumentsSoapClient;
 using DotNetEnv;
 using Npgsql;
-using Microsoft.IdentityModel.Tokens;
+using System.Net.Mail;
+using System.Net;
+using System.Threading.Tasks;
 
 PSQLDataAccess db = new PSQLDataAccess();
 bool process_data = true;
+SmtpClient smtpClient= new SmtpClient("mail.gmail.com");
+StringBuilder emailReport = new StringBuilder();
 
 bool init(){
     //prep the database
@@ -19,9 +20,9 @@ bool init(){
     Env.Load();
 
     string connectionstring = $"Host={getkeystring("PGHOST")}; Port={getkeystring("PGPORT")}; Database={getkeystring("PGDATABASE")}; User Id={getkeystring("PGUSER")}; Password={getkeystring("PGPASSWORD")};";
-   
 
-    Console.WriteLine("connection string :: "+connectionstring);
+    smtpClient.Credentials = new NetworkCredential(getkeystring("GMAIL_ACCOUNT"),getkeystring("GMAIL_APP_PASSWORD"));
+    smtpClient.EnableSsl = true;
 
     if(db.connect(connectionstring)){
         try{
@@ -78,9 +79,25 @@ async Task<int> main(){
         Console.WriteLine(sb.ToString());
     }
     else{
-        Console.WriteLine("Exiting No SOAP DATA Available or Database connection failure");
+        Console.WriteLine("ERROR :: Exiting No SOAP DATA Available or Database connection failure");
     }
     return 0;
+}
+
+async Task sendEmail(){
+    try{
+        var mailMessage = new MailMessage{
+            Subject = "Document Import Report",
+            Body = emailReport.ToString(),
+            IsBodyHtml = false,  
+        };
+
+        mailMessage.To.Add("QT9training@mybinxhealth.com");
+        await smtpClient.SendMailAsync(mailMessage);
+        
+    } catch(Exception ex){
+        Console.WriteLine("SMTP ERROR :: "+ex.Message);
+    }
 }
 
 
@@ -155,7 +172,7 @@ async Task<bool> processSOAPOutputToTSVfile(string path)
 
 int ListNewDocuments(){
     int count = 0;
-    StringBuilder sb = new StringBuilder().Append("NEW DOCUMENTS"+System.Environment.NewLine);
+    emailReport.Append("NEW DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
     sql.Append("select d.doc_id,d.documentcode,d.documentname,d.rev,now(),'' from documents_raw d WHERE lower(trim(d.doc_id)) NOT IN (SELECT lower(trim(doc_id)) FROM documents);");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
@@ -166,10 +183,9 @@ int ListNewDocuments(){
             var docCode = dr["documentcode"] ?? "";
             var docName = dr["documentname"] ?? "";
             var docRev = dr["rev"] ?? "";
-            sb.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine); 
+            emailReport.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine); 
             count++; 
         }
-        Console.WriteLine(sb.ToString());
     }
     return count;
 }
@@ -184,7 +200,7 @@ int ListNewDocuments(){
 
 int ListObsoleteDocuments(){
     int count = 0;
-    StringBuilder sb = new StringBuilder().Append("OBSOLETE DOCUMENTS"+System.Environment.NewLine);
+    emailReport.Append("OBSOLETE DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
     sql.Append("select d.doc_id,d.documentcode,d.documentname,d.rev from documents d WHERE d.doc_id not in (select documents_raw.doc_id from documents_raw) and d.active = true;");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
@@ -195,10 +211,9 @@ int ListObsoleteDocuments(){
             var docCode = dr["documentcode"] ?? "";
             var docName = dr["documentname"] ?? "";
             var docRev = dr["rev"] ?? "";
-            sb.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
+            emailReport.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
             count++;   
         }
-        Console.WriteLine(sb.ToString());
     }
     return count;
 }
@@ -212,7 +227,7 @@ int ObsoletedDocumentProcessing(){
 
 int ListNewRevisionDocuments(){
     int count = 0;
-    StringBuilder sb = new StringBuilder().Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
+    emailReport.Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
     sql.Append("select d.doc_id,d.documentcode,d.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id = d.doc_id where d.rev < rd.rev ");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
@@ -222,10 +237,9 @@ int ListNewRevisionDocuments(){
             var docCode = dr["documentcode"] ?? "";
             var docName = dr["documentname"] ?? "";
             var docRev = dr["rev"] ?? "";
-            sb.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
+            emailReport.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
             count++;   
         }
-        Console.WriteLine(sb.ToString());
     }
     return count;
 }
@@ -242,7 +256,7 @@ int NewRevisionDocumentProcessing(){
 
 int ListDocumentTitleUpdateDocuments(){
     int count = 0;
-    StringBuilder sb = new StringBuilder().Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
+    emailReport.Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
     sql.Append("select d.doc_id,d.documentcode,rd.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id = d.doc_id WHERE trim(d.documentname) != trim(rd.documentname);");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
@@ -252,10 +266,9 @@ int ListDocumentTitleUpdateDocuments(){
             var docCode = dr["documentcode"] ?? "";
             var docName = dr["documentname"] ?? "";
             var docRev = dr["rev"] ?? "";
-            sb.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
+            emailReport.Append(docId+"\t"+docCode+"\t"+docName+"\t"+docRev+System.Environment.NewLine);  
             count++;   
         }
-        Console.WriteLine(sb.ToString());
     }
     return count;
 }

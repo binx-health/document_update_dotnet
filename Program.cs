@@ -15,9 +15,7 @@ SmtpClient smtpClient= new SmtpClient("mail.gmail.com");
 StringBuilder emailReport = new StringBuilder();
 
 bool init(){
-    //prep the database
-
-    Env.Load();
+     Env.Load();
 
     string connectionstring = $"Host={getkeystring("PGHOST")}; Port={getkeystring("PGPORT")}; Database={getkeystring("PGDATABASE")}; User Id={getkeystring("PGUSER")}; Password={getkeystring("PGPASSWORD")};";
 
@@ -78,9 +76,11 @@ async Task<int> main(){
         sb.Append(newdocumentstitlescount + " documents had their title revised."+System.Environment.NewLine);
         Console.WriteLine(sb.ToString());
     }
-    else{
+    else
+    {
         Console.WriteLine("ERROR :: Exiting No SOAP DATA Available or Database connection failure");
     }
+    await sendEmail();
     return 0;
 }
 

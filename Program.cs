@@ -65,7 +65,6 @@ async Task<int> main(){
             NewRevisionDocumentProcessing();
             NewDocumentTitleProcessing();
         }
-
         db.disconnect();
 
         StringBuilder sb = new StringBuilder();

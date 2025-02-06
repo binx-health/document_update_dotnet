@@ -1,2 +1,6 @@
 /bin/*
 /obj/*
+.env
+
+documents.tsv
+documents.xml

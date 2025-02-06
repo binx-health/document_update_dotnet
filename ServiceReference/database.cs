@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 
 public class PSQLDataAccess(){
-    string PgconnectionString = "Host=localhost; Port=5432; Database=training; User Id=postgres; Password=postgress;";
+    string PgconnectionString = "";
     NpgsqlConnection? connection = null;
 
     bool connected = false;

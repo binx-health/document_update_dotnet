@@ -10,17 +10,20 @@ using System.Net;
 using System.Threading.Tasks;
 
 PSQLDataAccess db = new PSQLDataAccess();
-bool process_data = true;
+bool process_data = false;
 SmtpClient smtpClient= new SmtpClient("mail.gmail.com");
 StringBuilder emailReport = new StringBuilder();
+string targetEmailAddress = getkeystring("SEND_TO");
+
 
 bool init(){
      Env.Load();
 
     string connectionstring = $"Host={getkeystring("PGHOST")}; Port={getkeystring("PGPORT")}; Database={getkeystring("PGDATABASE")}; User Id={getkeystring("PGUSER")}; Password={getkeystring("PGPASSWORD")};";
 
-    smtpClient.Credentials = new NetworkCredential(getkeystring("GMAIL_ACCOUNT"),getkeystring("GMAIL_APP_PASSWORD"));
-    smtpClient.EnableSsl = true;
+   // smtpClient.Credentials = new NetworkCredential(getkeystring("GMAIL_ACCOUNT"),getkeystring("GMAIL_APP_PASSWORD"));
+   // smtpClient.EnableSsl = true;
+    
 
     if(db.connect(connectionstring)){
         try{
@@ -60,6 +63,7 @@ async Task<int> main(){
 
         if(process_data)
         {
+            Console.WriteLine("Processing data.....");
             NewDocumentProcessing();
             ObsoletedDocumentProcessing();
             NewRevisionDocumentProcessing();
@@ -73,26 +77,34 @@ async Task<int> main(){
         sb.Append(obsoltetedocumentcount +" documents were marked as obsolete"+System.Environment.NewLine);
         sb.Append(newrevisionpublishedcount + " documents had new revisions released"+System.Environment.NewLine);
         sb.Append(newdocumentstitlescount + " documents had their title revised."+System.Environment.NewLine);
-        Console.WriteLine(sb.ToString());
+        //Console.WriteLine(sb.ToString());
     }
     else
     {
         Console.WriteLine("ERROR :: Exiting No SOAP DATA Available or Database connection failure");
     }
-    await sendEmail();
+    Console.WriteLine(emailReport);
+   // await sendEmail();
     return 0;
 }
 
 async Task sendEmail(){
     try{
-        var mailMessage = new MailMessage{
+          var emailService = new EmailService(
+            getkeystring("SMTP_HOST"),
+            int.Parse(getkeystring("SMTP_PORT")),
+            getkeystring("GMAIL_ACCOUNT"),
+            getkeystring("GMAIL_APP_PASSWORD")
+        );
+
+        var mailMessage = new EmailMessage{
             Subject = "Document Import Report",
             Body = emailReport.ToString(),
-            IsBodyHtml = false,  
+            IsHtml = false,
+            ToAddresses = new[]{"sean.barnes@mybinxhealth.com"}
         };
-
-        mailMessage.To.Add("QT9training@mybinxhealth.com");
-        await smtpClient.SendMailAsync(mailMessage);
+        //mailMessage.To.Add(targetEmailAddress);
+       await emailService.SendEmailAsync(mailMessage);
         
     } catch(Exception ex){
         Console.WriteLine("SMTP ERROR :: "+ex.Message);
@@ -169,6 +181,17 @@ async Task<bool> processSOAPOutputToTSVfile(string path)
     return true;
 }
 
+// int UpdateNonTrainableDocuments(){
+//     try{
+//         string [] types = { "SOP", "POL", "QCP", "COP", "COSHH", "P", "PRO", "RA"};
+
+//     }
+//     catch(Exception e){
+//         Console.WriteLine(e.Message);
+//         return 0;
+//     }
+// }
+
 int ListNewDocuments(){
     int count = 0;
     emailReport.Append("NEW DOCUMENTS"+System.Environment.NewLine);
@@ -196,6 +219,8 @@ int ListNewDocuments(){
  
     return  db.ExecuteSqlCommand(sql.ToString());
 }
+
+
 
 int ListObsoleteDocuments(){
     int count = 0;

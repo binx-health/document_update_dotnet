@@ -38,8 +38,8 @@ public class PSQLDataAccess(){
                 NpgsqlCommand command = new NpgsqlCommand(commandText,connection);
                 return command.ExecuteNonQuery();
         }
-        catch ( System.Data.Common.DbException ex){
-            Console.WriteLine(ex.Message);
+        catch ( System.Data.Common.DbException){
+            //Console.WriteLine(ex.Message);
             return 0;
         }
 
@@ -51,8 +51,8 @@ public class PSQLDataAccess(){
                 NpgsqlCommand command = new NpgsqlCommand(commandText,connection);
                 return  command.ExecuteNonQuery();
         }
-        catch (Exception ex){
-            Console.WriteLine(ex.Message);
+        catch (Exception){
+            //Console.WriteLine(ex.Message);
             return 0;
         }
     }

@@ -34,6 +34,7 @@ public class EmailService : IDisposable
 
     public async Task SendEmailAsync(EmailMessage message)
     {
+
         if(message.ToAddresses == null || !message.ToAddresses.Any())
             throw new ArgumentException("At least one recipient us required");
 

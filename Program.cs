@@ -6,11 +6,9 @@ using static ServiceReference.wsDocumentsSoapClient;
 using DotNetEnv;
 using Npgsql;
 using System.Net.Mail;
-using System.Net;
-using System.Threading.Tasks;
 
 PSQLDataAccess db = new PSQLDataAccess();
-bool process_data = false;
+bool process_data = true;
 SmtpClient smtpClient= new SmtpClient("mail.gmail.com");
 StringBuilder emailReport = new StringBuilder();
 string targetEmailAddress = getkeystring("SEND_TO");
@@ -68,16 +66,17 @@ async Task<int> main(){
             ObsoletedDocumentProcessing();
             NewRevisionDocumentProcessing();
             NewDocumentTitleProcessing();
+            UpdateNonTrainableDocuments();
         }
         db.disconnect();
 
-        StringBuilder sb = new StringBuilder();
-        sb.Append("Data Import Complete : "+System.Environment.NewLine);
-        sb.Append(newdocumentscount+" new documents were imported"+System.Environment.NewLine); 
-        sb.Append(obsoltetedocumentcount +" documents were marked as obsolete"+System.Environment.NewLine);
-        sb.Append(newrevisionpublishedcount + " documents had new revisions released"+System.Environment.NewLine);
-        sb.Append(newdocumentstitlescount + " documents had their title revised."+System.Environment.NewLine);
-        //Console.WriteLine(sb.ToString());
+        // StringBuilder sb = new StringBuilder();
+        // sb.Append("Data Import Complete : "+System.Environment.NewLine);
+        // sb.Append(newdocumentscount+" new documents were imported"+System.Environment.NewLine); 
+        // sb.Append(obsoltetedocumentcount +" documents were marked as obsolete"+System.Environment.NewLine);
+        // sb.Append(newrevisionpublishedcount + " documents had new revisions released"+System.Environment.NewLine);
+        // sb.Append(newdocumentstitlescount + " documents had their title revised."+System.Environment.NewLine);
+        // //Console.WriteLine(sb.ToString());
     }
     else
     {
@@ -104,8 +103,7 @@ async Task sendEmail(){
             ToAddresses = new[]{"sean.barnes@mybinxhealth.com"}
         };
         //mailMessage.To.Add(targetEmailAddress);
-       await emailService.SendEmailAsync(mailMessage);
-        
+       await emailService.SendEmailAsync(mailMessage);  
     } catch(Exception ex){
         Console.WriteLine("SMTP ERROR :: "+ex.Message);
     }
@@ -163,7 +161,7 @@ async Task<bool> processSOAPOutputToTSVfile(string path)
         { 
             var docId = document.Element("DocumentID")?.Value ?? "";
             var docCode = document.Element("DocumentCode")?.Value ?? "";
-            var docNum =  document.Element("DocNum")?.Value ?? "";
+            var docNum =  document.Element("DocNum")?.Value.PadLeft(3,'0') ?? "";
             var docName = document.Element("DocumentName")?.Value;
             var docRev = document.Element("Rev._x0020__x0023_")?.Value ?? "";
 
@@ -181,16 +179,16 @@ async Task<bool> processSOAPOutputToTSVfile(string path)
     return true;
 }
 
-// int UpdateNonTrainableDocuments(){
-//     try{
-//         string [] types = { "SOP", "POL", "QCP", "COP", "COSHH", "P", "PRO", "RA"};
-
-//     }
-//     catch(Exception e){
-//         Console.WriteLine(e.Message);
-//         return 0;
-//     }
-// }
+void UpdateNonTrainableDocuments(){
+    try{
+        string sql = "update documents set active = false where id in (select d.id from documents d Where d.documentcode not ILIKE '%-SOP-%' AND d.documentcode not ILIKE '%-POL-%' AND d.documentcode not ILIKE '%-QCP-%'";
+        sql += "AND d.documentcode not ILIKE '%-COP-%' AND d.documentcode not ILIKE '%-COSHH-%' AND d.documentcode not ILIKE '%-P-%' AND d.documentcode not ILIKE '%-PRO-%' AND d.documentcode not ILIKE '%-RA-%' AND d.Active = true)";
+        db.ExecuteNonQueryCommand(sql);
+    }
+    catch(Exception e){
+        Console.WriteLine(e.Message);
+    }
+}
 
 int ListNewDocuments(){
     int count = 0;
@@ -216,7 +214,6 @@ int ListNewDocuments(){
     StringBuilder sql = new StringBuilder();
     sql.Append("insert into documents (doc_id,documentcode,documentname,rev,dateloaded,documenttype) ");
     sql.Append("select d.doc_id,d.documentcode,d.documentname,d.rev,now(),'' from documents_raw d WHERE lower(trim(d.doc_id)) NOT IN (SELECT lower(trim(doc_id)) FROM documents);");
- 
     return  db.ExecuteSqlCommand(sql.ToString());
 }
 
@@ -253,7 +250,7 @@ int ListNewRevisionDocuments(){
     int count = 0;
     emailReport.Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
-    sql.Append("select d.doc_id,d.documentcode,d.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id = d.doc_id where d.rev < rd.rev ");
+    sql.Append("select d.doc_id,d.documentcode,d.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id::INTEGER= d.doc_id::INTEGER where d.rev::INTEGER < rd.rev::INTEGER; ");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
     {
         while (dr.Read()){
@@ -270,19 +267,21 @@ int ListNewRevisionDocuments(){
 
 int NewRevisionDocumentProcessing(){
     StringBuilder sql = new StringBuilder();
-    sql.Append("UPDATE documents  ");
-    sql.Append("SET rev = raw.rev, dateloaded = now(),documentname = raw.documentname ");
-    sql.Append("FROM documents_raw raw ");
-    sql.Append("WHERE documents.doc_id = raw.doc_id AND documents.rev < raw.rev; ");   
+    sql.Append("UPDATE documents d SET rev = rd.rev,dateloaded = now(),documentname = rd.documentname ");
+    sql.Append("FROM documents_raw rd WHERE d.doc_id::INTEGER = rd.doc_id::INTEGER AND d.rev::INTEGER < rd.rev::INTEGER;");
+    // sql.Append("UPDATE documents  ");
+    // sql.Append("SET rev = raw.rev, dateloaded = now(),documentname = raw.documentname ");
+    // sql.Append("FROM documents_raw raw ");
+    // sql.Append("WHERE documents.doc_id = raw.doc_id AND documents.rev < raw.rev; ");   
     return  db.ExecuteSqlCommand(sql.ToString());
 }
 
 
 int ListDocumentTitleUpdateDocuments(){
     int count = 0;
-    emailReport.Append("NEW REVISION DOCUMENTS"+System.Environment.NewLine);
+    emailReport.Append("NEW TITLE DOCUMENTS"+System.Environment.NewLine);
     StringBuilder sql = new StringBuilder();    
-    sql.Append("select d.doc_id,d.documentcode,rd.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id = d.doc_id WHERE trim(d.documentname) != trim(rd.documentname);");
+    sql.Append("select d.doc_id,d.documentcode,rd.documentname,rd.rev from documents d inner join documents_raw rd on rd.doc_id::INTEGER = d.doc_id::INTEGER WHERE trim(d.documentname) != trim(rd.documentname);");
     using(NpgsqlDataReader dr = db.GetReader(sql.ToString()))
     {
         while (dr.Read()){
@@ -302,7 +301,7 @@ int NewDocumentTitleProcessing(){
     sql.Append("UPDATE documents  ");
     sql.Append("SET  documentname = raw.documentname, dateloaded = now() ");
     sql.Append("FROM documents_raw raw ");
-    sql.Append("WHERE documents.doc_id = raw.doc_id AND documents.documentname <> raw.documentname; "); 
+    sql.Append("WHERE documents.doc_id::INTEGER = raw.doc_id::INTEGER AND documents.documentname <> raw.documentname; "); 
     return  db.ExecuteSqlCommand(sql.ToString());
 }
 
